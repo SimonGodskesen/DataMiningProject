@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 
 #parameters
 file = "karate.edgelist"
-output_file = "karate.emb"
+output_file = "karate.csv"
 weighted = False
 directed = False
 dimensions = 128
 workers = 8 #cpu cores
-epochs = 1
-window_size = 10
+epochs = 10
+window_size = 1
 p = 1
 q = 5
 num_walks = 10
@@ -26,12 +26,16 @@ walk_length = 80
 
 def main():
     nx_G = read_graph()
+    print(nx_G.nodes())
     G = Graph(nx_G, directed, p, q)
     G.preprocess_transition_probs()
     walks = G.simulate_walks(num_walks, walk_length)
-    walks = [str(e) for e in walks]
+    walks = [list(map(str, walk)) for walk in walks]
     model = Word2Vec(walks, vector_size=dimensions, window=window_size, min_count=0, sg=1, workers=workers, epochs=epochs)
+    
     model.wv.save_word2vec_format(output_file)
+    #rel = KeyedVectors.load(output_file)
+    print(model)
 	#model.save(output_file)
     #model.save(output_file)
 
