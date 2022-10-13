@@ -74,25 +74,23 @@ class node2vec():
         
         node_alias = {}
         for node in G.nodes():
-            unnormalized = [G[node][nbr]['weight'] for nbr in G.neighbors(node)]
+            unnormalized = [G[node][nbr]['weight'] for nbr in sorted(G.neighbors(node))]
             normalized = [float(e)/sum(unnormalized) for e in unnormalized]
             #print(G.neighbors(node))
-            node_alias[node] = self.alias_setup(G.neighbors(node),normalized)
+            node_alias[node] = self.alias_setup(normalized)
 
         edge_alias = {}
 
         def _get_edge(start,dest):
             un = []
-            lst = []
-            for nbr in G.neighbors(dest):   
-                lst.append((dest,nbr))
+            for nbr in sorted(G.neighbors(dest)): 
                 un.append(G[dest][nbr]['weight'])             
                 if nbr == start:
                     un[-1] /= p
                 elif not G.has_edge(dest,start):
                     un[-1] /= q
             n = [float(e)/sum(un) for e in un]
-            return self.alias_setup(lst,n)
+            return self.alias_setup(n)
 
         for edge in G.edges():
             edge_alias[edge] = _get_edge(edge[0],edge[1])
@@ -102,14 +100,7 @@ class node2vec():
         self.G = G
         self.edge_alias = edge_alias
         self.node_alias = node_alias
-
-    def alias_setup(self,nodes,probs):
-        lex = {}
-        for i,e in enumerate(nodes):
-            lex[e] = probs[i]
-            print(e)
-        return VoseAlias(lex)
-
+    
     def walks(self,n,m):
         walks = []
         nodes = list(self.G.nodes())
@@ -124,14 +115,60 @@ class node2vec():
 
         for _ in range(m):
             here = walk[-1]
-            if len(walk) == 1:
-                walk.append(self.node_alias[node].alias_generation())
+            print("here",here)
+            nbrs = sorted(self.G.neighbors(here))
+            if len(nbrs) > 0:
+                if len(walk) == 1:
+                    print("ny print ",self.node_alias[node])
+                    walk.append(self.alias_draw(self.node_alias[here][0],self.node_alias[here][1]))
+                else:
+                    there = walk[-2]
+                    print("edge:", self.edge_alias[(there,here)])
+                    print("next node index",self.alias_draw(self.edge_alias[(there,here)][0],self.edge_alias[(there,here)][1]))
+                    next_node = nbrs[self.alias_draw(self.edge_alias[(there,here)][0],self.edge_alias[(there,here)][1])]
+                    walk.append(next_node)
             else:
-                there = walk[-2]
-                next_node = self.edge_alias[(there,here)]
-                print(next_node.alias_generation())
-                walk.append(next_node)
+                break
         return walk
+    
+
+    def alias_setup(self,probs):
+        
+        K = len(probs)
+        q = np.zeros(K)
+        J = np.zeros(K, dtype=np.int)
+
+        smaller = []
+        larger = []
+        for kk, prob in enumerate(probs):
+            q[kk] = K*prob
+            if q[kk] < 1.0:
+                smaller.append(kk)
+            else:
+                larger.append(kk)
+
+        while len(smaller) > 0 and len(larger) > 0:
+            small = smaller.pop()
+            large = larger.pop()
+
+            J[small] = large
+            q[large] = q[large] + q[small] - 1.0
+            if q[large] < 1.0:
+                smaller.append(large)
+            else:
+                larger.append(large)
+
+        return J, q
+
+
+    def alias_draw(self,J, q):
+        K = len(J)
+
+        kk = int(np.floor(np.random.rand()*K))
+        if np.random.rand() < q[kk]:
+            return kk
+        else:
+            return J[kk]
 
 
 
