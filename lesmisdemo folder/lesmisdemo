@@ -1,3 +1,4 @@
+from cProfile import label
 from curses import raw
 from operator import truediv
 import numpy as np
@@ -14,16 +15,16 @@ file = "lesmis.edgelist"
 output_file = "lesmis.emb"
 weighted = True
 directed = False
-dimensions = 128
+dimensions = 20
 workers = 8 #cpu cores
-epochs = 10
+epochs = 1
 window_size = 2
 p = 1
 q = 0.5
-num_walks = 10
-walk_length = 80
+num_walks = 100
+walk_length = 8
 
-n_cluster = 5
+n_cluster = 6
 
 plot = True
 
@@ -40,27 +41,26 @@ def main():
 	model.wv.save_word2vec_format(output_file)   
 
 	#Cluster it using K-means
-	vectored_nodes = pd.read_csv("lesmis.emb", sep=' ', skiprows=[0], header=None)
-	kmeans = KMeans(n_clusters=5)
-	kmeans.fit(vectored_nodes)
-	labels = kmeans.predict(vectored_nodes)
-	label_dict = {}
 	d = dict(G.ntw.degree)
-	for i,e in enumerate(labels):
-		label_dict[i] = e
-
-	node_label_dict = {}
-	for i,line in enumerate(open("lesmis.nodelist","r")):
-		node_label_dict[i] = line[0:-1]
-	print(node_label_dict)
-
-
-	#raw_G = nx.spring_layout(raw_G)
-	#plotting
-	if plot:
-		nx.draw_circular(G.ntw,labels=node_label_dict,node_color=labels,node_size=[v * 100 for v in d.values()])
-		plt.savefig("figure")
-		plt.show()
+	emb_df = (
+    pd.DataFrame(
+        [model.wv.get_vector(str(n)) for n in G.ntw.nodes()],
+        index = G.ntw.nodes    )
+	)
+	kmeans = KMeans(n_clusters=n_cluster).fit(emb_df) #fit
+	comm_dct = dict(zip(emb_df.index, kmeans.labels_))
+	cmap = {
+		0 : 'maroon',
+		1 : 'teal',
+		2 : 'black', 
+		3 : 'orange',
+		4 : 'green',
+		5 : 'gray',
+	}
+	node_cmap = [cmap[v] for _,v in comm_dct.items()]
+	nx.draw(G.ntw, node_size=[v * 100 for v in d.values()], alpha = 0.8, node_color=node_cmap)
+	#plt.savefig("q"+str(q)+".png")
+	plt.show()
 	
 
 
@@ -114,7 +114,6 @@ class node2vec():
 		for _ in range(walk_length):
 			cur = walk[-1]
 			cur_nbrs = sorted(self.ntw.neighbors(cur))
-			#if len(cur_nbrs) > 0:
 			if len(walk) == 1:
 				walk.append(cur_nbrs[alias_draw(alias_nodes[cur][0], alias_nodes[cur][1])])
 			else:
@@ -122,17 +121,12 @@ class node2vec():
 				next = cur_nbrs[alias_draw(alias_edges[(prev, cur)][0], 
 					alias_edges[(prev, cur)][1])]
 				walk.append(next)
-			#else:
-			#	break
-
 		return walk
 
 	def simulate_walks(self, num_walks, walk_length):
 		walks = []
 		nodes = list(self.ntw.nodes())
-		print('Walk iteration:')
 		for walk_iter in range(num_walks):
-			print(f"{walk_iter+1}/{num_walks}")
 			random.shuffle(nodes)
 			for node in nodes:
 				walks.append(self.node_walk(walk_length=walk_length, start_node=node))
@@ -152,7 +146,6 @@ class node2vec():
 				unnormalized_probs[-1] /= q
 		norm_const = sum(unnormalized_probs)
 		normalized_probs =  [float(u_prob)/norm_const for u_prob in unnormalized_probs]
-
 		return alias_setup(normalized_probs)
 
 
@@ -161,7 +154,7 @@ def alias_setup(probs):
 	
 	K = len(probs)
 	q = np.zeros(K)
-	J = np.zeros(K, dtype=np.int)
+	J = np.zeros(K, dtype=int)
 
 	smaller = []
 	larger = []
